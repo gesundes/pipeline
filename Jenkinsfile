@@ -6,6 +6,9 @@ pipeline {
   options {
     buildDiscarder(logRotator(numToKeepStr: '5', artifactNumToKeepStr: '5'))
   }
+  environment {
+    MAJOR_VERSION = 1
+  }
 
   stages {
     stage('Unit tests') {
@@ -81,6 +84,35 @@ pipeline {
         sh "./scripts/artidown.sh org.podvesnoy.rectangle rectangle 1.0-SNAPSHOT"
         nexusArtifactUploader artifacts: [[artifactId: 'rectangle', classifier: '', file: 'rectangle-1.0-SNAPSHOT.jar', type: 'jar']], credentialsId: 'nexus', groupId: 'org.podvesnoy.rectangle', nexusUrl: '10.0.2.10:8081', nexusVersion: 'nexus3', protocol: 'http', repository: 'maven-releases', version: "1.${env.BUILD_NUMBER}"
       }
+    }
+    stage('Promote code to master') {
+      agent {
+        label 'master'
+      }
+      when {
+        branch 'development'
+      }
+      steps {
+        sh 'git stash'
+        sh 'git checkout development'
+        sh 'git pull origin development'
+        sh "git checkout master"
+        sh 'git merge development'
+        sh 'git push origin master'
+        sh "git tag rectangle-${env.MAJOR_VERSION}.${env.BUILD_NUMBER}"
+        sh "git push origin rectangle-${env.MAJOR_VERSION}.${env.BUILD_NUMBER}"
+      }
+    }
+  }
+  post {
+    failure {
+      emailext(
+        subject: "Something goes wrong. ${env.BUILD_NUMBER}",
+        body: """
+         checkout ${env.BUILD_URL}
+        """,
+        to: "gesundes@gmail.com"
+      )
     }
   }
 }
